@@ -2,17 +2,21 @@
 
 ## Purpose
 
-`llmclient` is a small, vendor-agnostic client for calling different LLM
-providers (starting with Anthropic and Google) from one consistent
-interface, with built-in tracking of request cost so usage across models
-and vendors can be measured and budgeted.
+`llmclient` is one thin, vendor-agnostic layer through which all of the
+author's projects call LLM APIs, with runtime model/vendor selection by
+alias and a per-call spend ledger.
+
+It is explicitly **not** a framework: no agent loops, no prompt
+management, no retrieval. Callers own their prompts, retries-on-content,
+and validation. `llmclient` owns transport, model selection, usage
+capture, and cost.
+
+See [`docs/SPEC.md`](docs/SPEC.md) for the full founding spec.
 
 ## Non-goals
 
-- Not a general-purpose agent framework, orchestration engine, or CLI tool.
-- Not a proxy server or hosted service — it's a library you import.
-- Not committed to supporting every vendor or every model; vendors are
-  added deliberately, behind optional extras.
-- Not a replacement for vendor SDKs' advanced/streaming features on day
-  one — the initial surface favors a small, predictable core over
-  completeness.
+- Streaming, async, tool/function calling, structured-output modes,
+  multimodal inputs, prompt caching control, batch APIs.
+- Fallback routing / retry-on-transport — callers decide; a transport
+  retry that silently switches models would corrupt caller provenance.
+- Server/proxy mode, multi-tenancy, key vaulting beyond env vars.

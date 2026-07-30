@@ -2,6 +2,7 @@ name: gate
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -22,7 +23,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Mypy (strict)
-        run: uv run mypy --strict src
+        run: uv run mypy --strict src tests
 
       - name: Pytest
         run: uv run pytest

@@ -1,21 +1,31 @@
-# Copy this file to llmclient.toml and fill in the values for your setup.
-# llmclient never reads API keys from this file directly; secrets are
-# resolved from the environment variable named by each vendor's
-# `api_key_env` key.
+# Copy this file to llmclient.toml (or point LLMCLIENT_CONFIG at a copy)
+# and adjust the model aliases and pricing for your setup.
+#
+# This file never contains secrets. API keys are read from the environment
+# only (ANTHROPIC_API_KEY, GEMINI_API_KEY) — the config loader hard-fails
+# if it finds a key-like field here.
 
 [defaults]
-vendor = "anthropic"
-model = "claude-sonnet-5"
-timeout_seconds = 60
+timeout_seconds = 30.0
+max_output_tokens = 1024
+ledger_path = "~/.local/share/llmclient/ledger.jsonl"   # "off" disables
 
-[vendor.anthropic]
-api_key_env = "ANTHROPIC_API_KEY"
-default_model = "claude-sonnet-5"
+[models.sonnet]                    # alias — callers use only this
+vendor    = "anthropic"
+model_id  = "claude-sonnet-4-6"
+input_per_mtok  = 3.00             # USD; used for cost computation only
+output_per_mtok = 15.00
+cache_read_per_mtok  = 0.30       # optional; 0 if absent
+cache_write_per_mtok = 3.75       # optional
 
-[vendor.google]
-api_key_env = "GOOGLE_API_KEY"
-default_model = "gemini-2.5-pro"
+[models.haiku]
+vendor    = "anthropic"
+model_id  = "claude-haiku-4-5-20251001"
+input_per_mtok  = 1.00
+output_per_mtok = 5.00
 
-[budget]
-monthly_limit_usd = 50.0
-alert_threshold_pct = 80
+[models.flash]
+vendor    = "google"
+model_id  = "gemini-2.5-flash"
+input_per_mtok  = 0.30
+output_per_mtok = 2.50
