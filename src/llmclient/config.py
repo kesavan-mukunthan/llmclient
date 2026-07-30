@@ -26,6 +26,8 @@ _VALID_VENDORS = frozenset({"anthropic", "google"})
 
 _SECRET_KEY_PATTERN = re.compile(r"api.?key|secret|token|password|credential", re.IGNORECASE)
 
+_ROOT_ALLOWED_KEYS = frozenset({"defaults", "models"})
+
 _DEFAULTS_ALLOWED_KEYS = frozenset({"timeout_seconds", "max_output_tokens", "ledger_path"})
 _DEFAULTS_REQUIRED_KEYS = ("timeout_seconds", "max_output_tokens")
 
@@ -177,6 +179,8 @@ def _load_from_path(path: Path) -> Config:
             raw = tomllib.load(f)
         except tomllib.TOMLDecodeError as exc:
             raise ConfigError(f"invalid TOML in {path}: {exc}") from exc
+
+    _check_allowed_keys(raw, _ROOT_ALLOWED_KEYS, where=f"{path}: config root")
 
     defaults = _parse_defaults(raw.get("defaults", {}))
 

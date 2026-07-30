@@ -207,6 +207,34 @@ def test_secret_like_key_in_defaults_raises_with_no_secrets_message(
         load_config(config_path=config_file)
 
 
+def test_root_level_secret_key_raises_with_no_secrets_message(tmp_path: Path) -> None:
+    content = f'api_key = "x"\n{MINIMAL_CONFIG}'
+    config_file = _write(tmp_path / "llmclient.toml", content)
+
+    with pytest.raises(ConfigError, match="config holds no secrets") as exc_info:
+        load_config(config_path=config_file)
+
+    assert str(config_file) in str(exc_info.value)
+
+
+def test_unknown_root_level_table_raises(tmp_path: Path) -> None:
+    content = f"{MINIMAL_CONFIG}\n[something_unexpected]\nx = 1\n"
+    config_file = _write(tmp_path / "llmclient.toml", content)
+
+    with pytest.raises(ConfigError, match="something_unexpected") as exc_info:
+        load_config(config_path=config_file)
+
+    assert str(config_file) in str(exc_info.value)
+
+
+def test_valid_root_with_only_defaults_and_models_loads(tmp_path: Path) -> None:
+    config_file = _write(tmp_path / "llmclient.toml", MINIMAL_CONFIG)
+
+    config = load_config(config_path=config_file)
+
+    assert set(config.models) == {"sonnet"}
+
+
 def test_negative_price_raises(tmp_path: Path) -> None:
     content = MINIMAL_CONFIG.replace("input_per_mtok = 3.00", "input_per_mtok = -1.0")
     config_file = _write(tmp_path / "llmclient.toml", content)
