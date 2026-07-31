@@ -36,8 +36,12 @@ transport, selection, usage capture, and cost.
 
 ## 3. Config
 
-TOML, located via `LLMCLIENT_CONFIG` env var, else `./llmclient.toml`, else
-`~/.config/llmclient/config.toml` (first found wins; no merging).
+TOML. Discovery, first found wins, no merging: an explicit `config_path`
+passed to `Client(config_path=...)` is the highest-precedence source — when
+supplied, discovery is skipped entirely, and a missing or invalid path is a
+config-load error. Otherwise: `LLMCLIENT_CONFIG` env var (set but pointing at
+a nonexistent file is also a config-load error, no fallthrough), else
+`./llmclient.toml`, else `~/.config/llmclient/config.toml`.
 
 ```toml
 [defaults]
@@ -86,10 +90,16 @@ result: Completion = client.complete(
     system="...",
     messages=[{"role": "user", "content": "..."}],
     project="foliolens",               # ledger tag, required
+    stage="commentary",                # ledger tag, required — see below
     max_output_tokens=None,            # optional per-call overrides
     timeout_seconds=None,
 )
 ```
+
+`stage` is required, no default, alongside `project`: lowercase
+`[a-z0-9_-]`, max 32 chars. It segments spend within a project (e.g.
+`foliolens` calls at different pipeline steps) without a general-purpose
+metadata passthrough — see §9 Q2.
 
 `Completion` (frozen dataclass):
 
@@ -98,6 +108,7 @@ text: str                  # concatenated text blocks
 alias: str                 # as requested
 vendor: str
 model_id: str              # resolved — persist THIS for provenance
+stage: str                 # as requested
 input_tokens: int
 output_tokens: int
 cache_read_tokens: int     # 0 where vendor doesn't report
@@ -105,6 +116,8 @@ cache_write_tokens: int
 cost_usd: Decimal          # computed from config pricing; Decimal, not float
 latency_seconds: float
 requested_at: str          # ISO-8601 UTC
+stop_reason: str           # normalised: complete|max_tokens|stop_sequence|safety|other
+raw_stop_reason: str       # vendor-verbatim, kept alongside the normalised value
 raw_usage: dict            # vendor-verbatim usage block, for audit
 ```
 
@@ -130,7 +143,8 @@ class Adapter(Protocol):
                  timeout_seconds: float) -> AdapterResult: ...
 ```
 
-`AdapterResult` = text + raw usage dict + normalised token counts. Registry
+`AdapterResult` = text + raw usage dict + normalised token counts +
+normalised `stop_reason` + verbatim `raw_stop_reason`. Registry
 is a plain dict `{vendor: adapter_cls}` populated at import; adding a vendor
 = one module + one registry line. SDKs imported lazily inside adapters so
 installing `llmclient` doesn't require every vendor's SDK (optional extras:
@@ -145,7 +159,7 @@ Append-only JSONL, one object per call, written after every completion
 (success or vendor error with usage, when available):
 
 ```json
-{"ts": "...", "project": "foliolens", "alias": "sonnet",
+{"ts": "...", "project": "foliolens", "stage": "commentary", "alias": "sonnet",
  "vendor": "anthropic", "model_id": "claude-sonnet-4-6",
  "input_tokens": 5210, "output_tokens": 287,
  "cache_read_tokens": 0, "cache_write_tokens": 0,
@@ -155,7 +169,7 @@ Append-only JSONL, one object per call, written after every completion
 - Never contains prompt or response text — spend data, not conversation
   logs. This is a privacy/size decision; record it in the module docstring.
 - Ledger write failure logs a warning, never fails the call.
-- `llmclient spend [--project X] [--since YYYY-MM-DD] [--by alias|project|day]`
+- `llmclient spend [--project X] [--since YYYY-MM-DD] [--by alias|project|day|stage]`
   aggregates. Costs summed as Decimal.
 - JSONL not SQLite: append-only, greppable, trivially concatenable across
   machines; revisit only if aggregation actually gets slow.
@@ -196,10 +210,14 @@ llmclient/
 
 ## 8. FolioLens integration contract (later, separate FolioLens PR)
 
-- A ~10-line shim in FolioLens satisfies the existing
-  `CommentaryTransport = Callable[[str, list[dict[str,str]]], str]`
-  signature by calling `client.complete(alias=..., project="foliolens")`
-  and returning `.text`.
+- A small factory in FolioLens builds a `CommentaryTransport = Callable[[str,
+  list[dict[str,str]]], str]` per call site, binding `alias` and `stage`
+  at construction and closing over a constant `project="foliolens"`; each
+  built shim calls `client.complete(alias=..., project="foliolens",
+  stage=...)` and returns `.text`. Note the `-> str` signature this shim
+  must satisfy loses `cost_usd`, `stop_reason`, and `stage` off every call
+  — widening `CommentaryTransport` to carry them is the fix, decided in
+  FolioLens's own PR, not here.
 - FolioLens pins the alias per batch (CLI arg or its own config) and
   persists `Completion.model_id` into each commentary block — cohort
   consistency and provenance stay FolioLens's responsibility, exactly as
@@ -212,12 +230,12 @@ llmclient/
 
 ## 9. Open questions (decide in the new project, not silently)
 
-1. Ledger default location: per-machine (`~/.local/share`) vs per-project
-   (`./.llmclient/ledger.jsonl`). Per-machine draft-preferred: spend is an
-   account-level concern; `project` field already segments it.
-2. Whether `complete()` grows a `metadata: dict` passthrough into the
-   ledger (e.g. FolioLens could tag `amfi_code`). Cheap, but scope-creep
-   adjacent; default no.
+1. **Resolved (M2):** ledger default location is per-machine
+   (`~/.local/share/llmclient/ledger.jsonl`) — spend is an account-level
+   concern; `project` already segments it. `"off"` disables the ledger.
+2. **Resolved (M2):** no `metadata: dict` passthrough. A bounded `stage:
+   str` (§4) covers per-call-site attribution without opening a
+   general-purpose escape hatch into the ledger.
 3. Gemini usage nuances (thinking-token accounting on 2.5-series) —
    resolve against the live API during adapter work, record in adapter
    docstring.
