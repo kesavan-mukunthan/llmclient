@@ -118,11 +118,13 @@ class LedgerRow:
             ints[key] = value
 
         cost_raw = obj["cost_usd"]
-        if not isinstance(cost_raw, str):
+        if not isinstance(cost_raw, str) or "_" in cost_raw:
             return None
         try:
             cost_usd = Decimal(cost_raw)
         except InvalidOperation:
+            return None
+        if not cost_usd.is_finite():
             return None
 
         latency_raw = obj["latency_seconds"]
@@ -193,14 +195,16 @@ def read(path: Path) -> ReadResult:
     A missing file is treated as an empty ledger, not an error. Any line
     that isn't valid JSON, or doesn't decode to a well-formed `LedgerRow`,
     is skipped and its 1-based line number recorded in `malformed_lines`;
-    this function never raises on file content.
+    this function never raises on file content. Undecodable bytes are
+    replaced (U+FFFD) rather than raising — the resulting line then fails
+    JSON parsing or shape validation and is reported as malformed too.
     """
     if not path.is_file():
         return ReadResult(rows=[], malformed_lines=[])
 
     rows: list[LedgerRow] = []
     malformed_lines: list[int] = []
-    with path.open("r", encoding="utf-8") as f:
+    with path.open("r", encoding="utf-8", errors="replace") as f:
         for line_number, line in enumerate(f, start=1):
             stripped = line.strip()
             if not stripped:

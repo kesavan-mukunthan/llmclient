@@ -239,6 +239,41 @@ def test_malformed_cases_each_counted(tmp_path: Path, content: str) -> None:
     assert result.malformed_lines == [1]
 
 
+def _row_json(**cost_usd_override: object) -> str:
+    obj = _row().to_json_obj()
+    obj.update(cost_usd_override)
+    return json.dumps(obj, separators=(",", ":"))
+
+
+@pytest.mark.parametrize(
+    "cost_usd",
+    ["NaN", "Infinity", "-Infinity", "1_0"],
+)
+def test_non_finite_and_underscore_cost_usd_counted_malformed(
+    tmp_path: Path, cost_usd: str
+) -> None:
+    path = tmp_path / "ledger.jsonl"
+    path.write_text(_row_json(cost_usd=cost_usd) + "\n", encoding="utf-8")
+
+    result = read(path)
+
+    assert result.rows == []
+    assert result.malformed_lines == [1]
+
+
+def test_undecodable_bytes_counted_malformed(tmp_path: Path) -> None:
+    path = tmp_path / "ledger.jsonl"
+    good_line = json.dumps(_row().to_json_obj(), separators=(",", ":"))
+    with path.open("wb") as f:
+        f.write(good_line.encode("utf-8") + b"\n")
+        f.write(b'{"ts":"x"\xff\n')
+
+    result = read(path)
+
+    assert len(result.rows) == 1
+    assert result.malformed_lines == [2]
+
+
 def test_blank_lines_are_skipped_and_not_counted_malformed(tmp_path: Path) -> None:
     path = tmp_path / "ledger.jsonl"
     good_line = json.dumps(_row().to_json_obj(), separators=(",", ":"))
